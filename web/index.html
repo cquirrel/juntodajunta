@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Junto da Junta</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="reset.css"> 
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="header">
+        <img alt="logo" src="logo.png">
+    </div>
+
+    <div class="form-container" x-data="issueForm()" x-init="init()">
+        <div class="announcement">
+            <div style="margin-bottom: 0.5rem;">
+                Esta é uma plataforma independente que facilita a comunicação de problemas junto da junta de freguesia responsável.
+            </div>
+            <small>
+                Ao submeter este formulário, será enviado enviado um e-mail à junta de freguesia com informações abaixo fornecidas.
+            </small>
+        </div>
+
+        <form @submit.prevent="handleSubmit">
+            <div class="form-group">
+                <label>Localização</label>
+                <small>Clique no mapa para definir a localização manualmente ou utilize a localização atual.</small>
+                <div class="location-container">
+                    <div class="map-wrapper">
+                        <div id="map"></div>
+                    </div>
+                    <div class="map-buttons">
+                        <button type="button" @click="getCurrentLocation()">
+                            Usar posição atual
+                        </button>
+                        <button type="button" @click="recenterMap()">
+                            Re-centrar mapa
+                        </button>
+                    </div>
+                    <template x-if="locationError">
+                        <div x-text="locationError" class="error-message"></div>
+                    </template>
+                    <div class="municipality-info">
+                        <template x-if="isLoadingMunicipality">
+                            <div>Loading municipality...</div>
+                        </template>
+                        <template x-if="!isLoadingMunicipality && municipality">
+                            <div>
+                                <small>Por favor confirme o local e junta de freguesia antes de submeter a ocurrencia.</small>
+                                <div><strong>Freguesia</strong>: <span x-text="municipality"></span></div>
+                                <div x-show="streetAddress"><strong>Local</strong>: <span x-text="streetAddress"></span></div>
+                                <div x-show="municipalityEmail"><strong>Email</strong>: <span x-text="municipalityEmail"></span></div>
+                            </div>
+                        </template>
+                        <template x-if="!isLoadingMunicipality && !municipality">
+                            <div class="error-message">Error fetching municipality data</div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Fotografias (<span x-text="media.length">0</span>/3)</label>
+                <small>Adicione até 3 fotografias</small>
+                <div class="media-preview">
+                    <div class="media-container">
+                        <template x-if="media[currentMediaIndex]">
+                            <div class="media-preview-photo">
+                                <img :src="media[currentMediaIndex].preview" alt="Preview">
+                                <button type="button" class="remove-media" @click="removeMedia(currentMediaIndex)">Remover esta fotografia</button>
+                            </div>
+                        </template>
+                        <template x-if="!media[currentMediaIndex]">
+                            <button type="button" class="upload-area" @click="$refs.imageInput.click()">
+                                Pressione para adicionar fotografia
+                            </button>
+                        </template>
+                    </div>
+                    <div class="media-selector">
+                        <template x-for="index in [0,1,2]" :key="index">
+                            <button type="button" 
+                                class="selector-button"
+                                :class="{
+                                    'active': index === currentMediaIndex,
+                                    'has-image': index < media.length
+                                }"
+                                @click="setCurrentMediaIndex(index)">
+                                <span>Foto&nbsp;</span>
+                                <span x-text="index + 1"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+                <input type="file" id="imageInput" x-ref="imageInput" accept="image/jpeg,image/png,image/gif" style="display: none" @change="handleMediaUpload($event.target.files)">
+            </div>
+    
+            <div class="form-group">
+                <label>Descrição</label>
+                <small>Preencha o campo abaixo para descrever o problema de forma clara e sucinta</small>
+                <textarea x-model="description" rows="4"></textarea>
+            </div>
+    
+            <div class="form-group">
+                <label>Categoria</label>
+                <small>Preencha a categoria que mais se adequa ao problema ou use o botão para detectar a categoria baseado na sua descrição da ocorrência.</small>
+                <select x-model="category" required class="form-control">
+                    <option value="">Escolha a Categoria</option>
+                    <option value="16">Acessos para Cidadãos com Mobilidade Reduzida</option>
+                    <option value="2">Animais Abandonados</option>
+                    <option value="4">Conservação da Iluminação Pública</option>
+                    <option value="9">Conservação das Ruas e Pavimento</option>
+                    <option value="8">Conservação de Parque Escolar</option>
+                    <option value="15">Estacionamento de Veículos</option>
+                    <option value="3">Limpeza de Valetas, Bermas e Caminhos</option>
+                    <option value="5">Limpeza e Conservação de Espaços Públicos</option>
+                    <option value="11">Manutenção de Ciclovias</option>
+                    <option value="17">Manutenção e Limpeza de Contentores e Ecopontos</option>
+                    <option value="13">Manutenção, Rega e Limpeza de Jardins</option>
+                    <option value="14">Nomes ou Numeração de Ruas</option>
+                    <option value="19">Poluição Sonora</option>
+                    <option value="10">Publicidade, Outdoors e Cartazes</option>
+                    <option value="12">Recolha de Lixo</option>
+                    <option value="6">Saneamento, Ruturas de Águas ou Desvio de Tampas</option>
+                    <option value="7">Sinalização de Trânsito</option>
+                    <option value="18">Outro</option>
+                </select>
+                <button type="button" @click="detectCategory()" :disabled="isDetecting" class="improve-button">
+                    <span x-text="isDetecting ? 'A detectar...' : 'Detectar categoria'"></span>
+                </button>
+            </div>
+    
+            <div class="form-group">
+                <label>Informações adicionais</label>
+                <small>O seu endereço de email é obrigatório e será partilhado com a junta de freguesia para eventuais esclarecimentos adicionais ou comunicação da resolução do problema.</small>
+                <input type="email" x-model="email" placeholder="O seu email" required>
+            </div>
+
+            <div class="form-group">
+                <small>O número de telefone será usado apenas para prevenir o abuso do serviço e não será gravado ou partilhado com nenhuma entidade. Ao clicar "Submeter" receberá um código via SMS que deverá usar para confirmar a submissão.</small>
+                <div class="submit-zone">
+                    <input type="tel" x-model="phoneNumber" placeholder="Número de telefone" required>
+                    <button type="submit" :disabled="loading">Submeter</button>
+                </div>
+            </div>
+    
+            <div x-text="errorMessage" class="error-message"></div>
+            
+        </form>
+
+        <!-- OTP Verification Modal -->
+        <div x-show="showOtpModal" x-cloak class="modal" @click.self="closeOtpModal()">
+            <div class="modal-content">
+                <button type="button" class="modal-close" @click="closeOtpModal()" aria-label="Fechar">&times;</button>
+                <h3>Verificação</h3>
+                <p>Foi enviado um código de verificação para o número: <span x-text="phoneNumber"></span></p>
+                <div class="otp-container">
+                    <input type="text" x-model="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="Digite o código" maxlength="6" class="otp-input" @input="handleOtpInput">
+                    <div x-text="otpError" class="error-message"></div>
+                    <button @click="verifyOTPAndSubmit()" :disabled="loading" class="verify-button">Verificar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Modal -->
+        <div x-show="showSuccessModal" x-cloak class="modal">
+            <div class="modal-content">
+                <h3>Obrigado!</h3>
+                <p>O seu problema foi submetido com sucesso. A freguesia irá analisar e tomar as medidas necessárias.</p>
+                <button @click="handleNewIssue()">Reportar Outro Problema</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <!-- reCAPTCHA -->
+    <script src="https://www.google.com/recaptcha/api.js?render=6LdUaSgrAAAAALEeJ9cbI1CotgAcYEhE4V2DFvLd&onload=onloadRecaptcha"></script>
+    <!-- Custom JS -->
+    <script src="app.js"></script>
+
+    <div class="disclosure">
+        <p>Este projeto é totalmente independente de qualquer instituição governamental.</p>
+        <p>
+            <a href="https://github.com/junto-da-junta/junto-da-junta" target="_blank" rel="noopener noreferrer">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                Código fonte disponível no GitHub
+            </a>
+        </p>
+    </div>
+</body>
+</html> 
